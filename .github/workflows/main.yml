@@ -9,21 +9,29 @@ jobs:
     timeout-minutes: 3600
 
     steps:
+
       - name: Optimize RDP Speed
         run: |
+          # Improve RDP speed and reduce latency
           Set-ItemProperty -Path 'HKLM:\SOFTWARE\Policies\Microsoft\Windows NT\Terminal Services' -Name "Compression" -Value 1 -Force
           Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -Name "BitmapCacheSize" -Value 0 -Force
           Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -Name "MinEncLevel" -Value 1 -Force
           Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -Name "MaxEncLevel" -Value 1 -Force
+          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Services\TermService' -Name "Start" -Value 2 -Force
+
+          # Disable sleep mode entirely
           powercfg -change -standby-timeout-ac 0
           powercfg -change -monitor-timeout-ac 0
 
+          Restart-Service -Name TermService -Force
+
       - name: Enable RDP
         run: |
-          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name "fDenyTSConnections" -Value 0 -Force
+          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' `
+                             -Name "fDenyTSConnections" -Value 0 -Force
+
           netsh advfirewall firewall delete rule name="RDP-Allow"
           netsh advfirewall firewall add rule name="RDP-Allow" dir=in action=allow protocol=TCP localport=3389
-          Restart-Service TermService
 
       - name: Create RDP User
         run: |
@@ -32,6 +40,7 @@ jobs:
           $securePass = ConvertTo-SecureString $password -AsPlainText -Force
           New-LocalUser -Name "RDP" -Password $securePass -AccountNeverExpires
           Add-LocalGroupMember -Group "Administrators" -Member "RDP"
+
           echo "RDP_PASSWORD=$password" >> $env:GITHUB_ENV
 
       - name: Install ngrok
@@ -41,25 +50,31 @@ jobs:
           echo "${{ github.workspace }}\ngrok" >> $env:GITHUB_PATH
 
       - name: Auth ngrok
-        run: .\ngrok\ngrok.exe authtoken "${{ secrets.NGROK_AUTH_TOKEN }}"
+        run: |
+          .\ngrok\ngrok.exe authtoken "${{ secrets.NGROK_AUTH_TOKEN }}"
 
-      - name: Start ngrok Tunnel + Keep Alive Forever
+      - name: Keep ngrok Alive Forever + Auto Restart
         run: |
           echo "Starting ngrok infinite loop..."
           while ($true) {
               Start-Process -FilePath ".\ngrok\ngrok.exe" -ArgumentList "tcp 3389" -WindowStyle Minimized
               Start-Sleep -Seconds 5
+
               try {
                   $tunnel = Invoke-WebRequest -UseBasicParsing http://127.0.0.1:4040/api/tunnels
-                  $json = $tunnel.Content | ConvertFrom-Json
-                  $public = $json.tunnels.public_url -replace "tcp://",""
-                  echo "NGROK_ADDR=$public" >> $env:GITHUB_ENV
-                  Write-Host "NGROK Active at: $public"
+                  if ($tunnel.StatusCode -eq 200) {
+                      $json = $tunnel.Content | ConvertFrom-Json
+                      $public = $json.tunnels.public_url -replace "tcp://",""
+                      echo "NGROK_ADDR=$public" >> $env:GITHUB_ENV
+                      Write-Host "NGROK Active at: $public"
+                  }
               } catch {}
+
+              # monitor ngrok every 30s
               Start-Sleep -Seconds 30
           }
 
-      - name: Show Connection Info
+      - name: Display RDP Info
         run: |
           Write-Host "`n=== RDP ACCESS ==="
           Write-Host "Host: $env:NGROK_ADDR"
