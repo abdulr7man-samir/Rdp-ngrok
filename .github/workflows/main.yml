@@ -9,6 +9,23 @@ jobs:
     timeout-minutes: 3600
 
     steps:
+      - name: Optimize Power and Language Settings
+        run: |
+          # منع الـ Sleep والـ Lock وتفعيل الأداء العالي
+          powercfg /setactive 8c5e7fda-e8bf-4a96-9a85-a6e23a8c635c
+          powercfg /x -monitor-timeout-ac 0
+          powercfg /x -monitor-timeout-dc 0
+          powercfg /x -standby-timeout-ac 0
+          powercfg /x -standby-timeout-dc 0
+          powercfg /x -hibernate-timeout-ac 0
+          
+          # إعدادات اللغة العربية (واجهة وكيبورد)
+          Install-Language ar-SA -Confirm:$false
+          Set-SystemPreferredUILanguage ar-SA
+          $List = Get-WinUserLanguageList
+          $List.Add("ar-SA")
+          Set-WinUserLanguageList $List -Force
+
       - name: Configure Core RDP Settings
         run: |
           Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' `
@@ -23,22 +40,9 @@ jobs:
 
           Restart-Service -Name TermService -Force
 
-      - name: Create RDP User with Secure Password
+      - name: Create RDP User with Static Password
         run: |
-          Add-Type -AssemblyName System.Security
-          $charSet = @{
-              Upper   = [char[]](65..90)
-              Lower   = [char[]](97..122)
-              Number  = [char[]](48..57)
-              Special = ([char[]](33..47) + [char[]](58..64) +
-                         [char[]](91..96) + [char[]](123..126))
-          }
-          $rawPassword = @()
-          $rawPassword += $charSet.Upper | Get-Random -Count 4
-          $rawPassword += $charSet.Lower | Get-Random -Count 4
-          $rawPassword += $charSet.Number | Get-Random -Count 4
-          $rawPassword += $charSet.Special | Get-Random -Count 4
-          $password = -join ($rawPassword | Sort-Object { Get-Random })
+          $password = "Admin@123"
           $securePass = ConvertTo-SecureString $password -AsPlainText -Force
           
           New-LocalUser -Name "RDP" -Password $securePass -AccountNeverExpires
@@ -76,6 +80,7 @@ jobs:
           Write-Host "Host: $env:NGROK_RDP"
           Write-Host "User: RDP"
           Write-Host "Password: $env:RDP_PASSWORD"
+          Write-Host "Status: Power Sleep/Lock Disabled"
           Write-Host "==================`n"
 
       - name: Keep alive
