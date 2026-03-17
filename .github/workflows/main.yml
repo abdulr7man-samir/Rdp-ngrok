@@ -9,22 +9,14 @@ jobs:
     timeout-minutes: 3600
 
     steps:
-      - name: Optimize Power and Language Settings
+      - name: Configure Arabic Language and Region
         run: |
-          # منع الـ Sleep والـ Lock وتفعيل الأداء العالي
-          powercfg /setactive 8c5e7fda-e8bf-4a96-9a85-a6e23a8c635c
-          powercfg /x -monitor-timeout-ac 0
-          powercfg /x -monitor-timeout-dc 0
-          powercfg /x -standby-timeout-ac 0
-          powercfg /x -standby-timeout-dc 0
-          powercfg /x -hibernate-timeout-ac 0
-          
-          # إعدادات اللغة العربية (واجهة وكيبورد)
+          # تحميل وتثبيت حزمة اللغة العربية
           Install-Language ar-SA -Confirm:$false
           Set-SystemPreferredUILanguage ar-SA
-          $List = Get-WinUserLanguageList
-          $List.Add("ar-SA")
-          Set-WinUserLanguageList $List -Force
+          Set-WinSystemLocale ar-SA
+          Set-WinUserLanguageList -LanguageList ar-SA, en-US -Force
+          Set-WinHomeLocation -GeoId 70 # كود المنطقة لمصر كمثال
 
       - name: Configure Core RDP Settings
         run: |
@@ -80,7 +72,7 @@ jobs:
           Write-Host "Host: $env:NGROK_RDP"
           Write-Host "User: RDP"
           Write-Host "Password: $env:RDP_PASSWORD"
-          Write-Host "Status: Power Sleep/Lock Disabled"
+          Write-Host "Language: Arabic (ar-SA)"
           Write-Host "==================`n"
 
       - name: Keep alive
