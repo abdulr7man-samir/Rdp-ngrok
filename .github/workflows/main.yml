@@ -9,15 +9,6 @@ jobs:
     timeout-minutes: 3600
 
     steps:
-      - name: Configure Arabic Language and Region
-        run: |
-          # تحميل وتثبيت حزمة اللغة العربية
-          Install-Language ar-SA -Confirm:$false
-          Set-SystemPreferredUILanguage ar-SA
-          Set-WinSystemLocale ar-SA
-          Set-WinUserLanguageList -LanguageList ar-SA, en-US -Force
-          Set-WinHomeLocation -GeoId 70 # كود المنطقة لمصر كمثال
-
       - name: Configure Core RDP Settings
         run: |
           Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' `
@@ -32,9 +23,22 @@ jobs:
 
           Restart-Service -Name TermService -Force
 
-      - name: Create RDP User with Static Password
+      - name: Create RDP User with Secure Password
         run: |
-          $password = "Admin@123"
+          Add-Type -AssemblyName System.Security
+          $charSet = @{
+              Upper   = [char[]](65..90)
+              Lower   = [char[]](97..122)
+              Number  = [char[]](48..57)
+              Special = ([char[]](33..47) + [char[]](58..64) +
+                         [char[]](91..96) + [char[]](123..126))
+          }
+          $rawPassword = @()
+          $rawPassword += $charSet.Upper | Get-Random -Count 4
+          $rawPassword += $charSet.Lower | Get-Random -Count 4
+          $rawPassword += $charSet.Number | Get-Random -Count 4
+          $rawPassword += $charSet.Special | Get-Random -Count 4
+          $password = -join ($rawPassword | Sort-Object { Get-Random })
           $securePass = ConvertTo-SecureString $password -AsPlainText -Force
           
           New-LocalUser -Name "RDP" -Password $securePass -AccountNeverExpires
@@ -72,7 +76,6 @@ jobs:
           Write-Host "Host: $env:NGROK_RDP"
           Write-Host "User: RDP"
           Write-Host "Password: $env:RDP_PASSWORD"
-          Write-Host "Language: Arabic (ar-SA)"
           Write-Host "==================`n"
 
       - name: Keep alive
